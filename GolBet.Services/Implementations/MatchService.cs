@@ -18,6 +18,12 @@ public class MatchService : IMatchService
         _mapper = mapper;
     }
 
+    public async Task<MatchDetailDto?> GetDetailAsync(int id)
+    {
+        var match = await _matchRepository.GetByIdWithDetailsAsync(id);
+        return match is null ? null : _mapper.Map<MatchDetailDto>(match);
+    }
+
     public async Task<IEnumerable<MatchDto>> GetBoardAsync(MatchStatus? status = null)
     {
         var matches = await _matchRepository.GetAllWithTeamsAsync(status);
