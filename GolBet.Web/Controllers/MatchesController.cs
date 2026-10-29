@@ -25,10 +25,12 @@ public class MatchesController : Controller
 
     // GET /Matches            -> all matches
     // GET /Matches?status=Scheduled -> filtered board
-    public async Task<IActionResult> Index(MatchStatus? status)
+
+    //Modificacion: Se recibió el parámetro desde la vista y se envió al servicio
+    public async Task<IActionResult> Index(MatchStatus? status, string? search = null) 
     {
         ViewBag.CurrentStatus = status;
-        var board = await _matchService.GetBoardAsync(status);
+        var board = await _matchService.GetBoardAsync(status, search);
         return View(board);
     }
 
