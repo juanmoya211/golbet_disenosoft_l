@@ -13,21 +13,17 @@ namespace GolBet.Web.Controllers;
 public class MatchesController : Controller
 {
     private readonly IMatchService _matchService;
-
     private readonly ITeamService _teamService;
 
-    public MatchesController(IMatchService matchService, ITeamService
-        teamService)
+    public MatchesController(IMatchService matchService, ITeamService teamService)
     {
-         _matchService = matchService;
-         _teamService = teamService; 
+        _matchService = matchService;
+        _teamService = teamService;
     }
 
     // GET /Matches            -> all matches
     // GET /Matches?status=Scheduled -> filtered board
-
-    //Modificacion: Se recibió el parámetro desde la vista y se envió al servicio
-    public async Task<IActionResult> Index(MatchStatus? status, string? search = null) 
+    public async Task<IActionResult> Index(MatchStatus? status, string? search = null)
     {
         ViewBag.CurrentStatus = status;
         var board = await _matchService.GetBoardAsync(status, search);
@@ -38,7 +34,7 @@ public class MatchesController : Controller
     public async Task<IActionResult> Detail(int id)
     {
         var match = await _matchService.GetDetailAsync(id);
-        if (match is null) return NotFound();   // HTTP 404
+        if (match is null) return NotFound();
 
         return View(match);
     }
@@ -67,7 +63,7 @@ public class MatchesController : Controller
             TempData["Success"] = "Partido creado correctamente.";
             return RedirectToAction(nameof(Index));
         }
-        catch (InvalidOperationException ex)      // business rule violated
+        catch (InvalidOperationException ex)
         {
             ModelState.AddModelError(string.Empty, ex.Message);
             await LoadTeamsAsync();
@@ -82,7 +78,7 @@ public class MatchesController : Controller
         var dto = await _matchService.GetForEditAsync(id);
         if (dto is null) return NotFound();
 
-        await LoadTeamsAsync(); // the form needs the dropdowns too
+        await LoadTeamsAsync();
         return View(dto);
     }
 
@@ -103,7 +99,7 @@ public class MatchesController : Controller
             TempData["Success"] = "Partido actualizado correctamente.";
             return RedirectToAction(nameof(Index));
         }
-        catch (InvalidOperationException ex)      // business rule violated
+        catch (InvalidOperationException ex)
         {
             ModelState.AddModelError(string.Empty, ex.Message);
             await LoadTeamsAsync();
@@ -120,6 +116,44 @@ public class MatchesController : Controller
         TempData["Success"] = "Partido desactivado.";
         return RedirectToAction(nameof(Index));
     }
+
+    // ✅ ACCIONES NUEVAS DEL MÓDULO 9
+    [Authorize(Roles = DbSeeder.AdminRole)]
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Start(int id)
+    {
+        await _matchService.StartMatchAsync(id);
+        TempData["Success"] = "El partido ha comenzado. Ya no se pueden hacer más apuestas.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [Authorize(Roles = DbSeeder.AdminRole)]
+    public async Task<IActionResult> Close(int id)
+    {
+        var match = await _matchService.GetDetailAsync(id);
+        if (match is null) return NotFound();
+
+        var dto = new MatchResultFormDto { MatchId = id };
+        ViewBag.Match = match;
+        return View(dto);
+    }
+
+    [Authorize(Roles = DbSeeder.AdminRole)]
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Close(MatchResultFormDto dto)
+    {
+        if (!ModelState.IsValid)
+        {
+            var match = await _matchService.GetDetailAsync(dto.MatchId);
+            ViewBag.Match = match;
+            return View(dto);
+        }
+
+        var summary = await _matchService.CloseMatchAsync(dto);
+        TempData["Success"] = $"Partido cerrado. Se resolvieron {summary.ResolvedBets} apuestas, {summary.WonBets} ganadoras, se pagaron {summary.TotalPaid} FutCoins.";
+        return RedirectToAction(nameof(Index));
+    }
+
     private async Task LoadTeamsAsync()
     {
         var teams = await _teamService.GetAllAsync();

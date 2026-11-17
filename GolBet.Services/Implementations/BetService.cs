@@ -40,10 +40,10 @@ public class BetService : IBetService
             throw new InvalidOperationException(
                 "Este partido ya no acepta apuestas.");
 
-        // Rule #3: same pick on the same match only once
-        if (await _betRepository.ExistsAsync(dto.MatchId, userId, dto.Pick))
+        // ✅ CORRECCIÓN: El usuario solo puede apostar UNA VEZ POR PARTIDO, sin importar la selección
+        if (await _betRepository.UserHasBetOnMatchAsync(dto.MatchId, userId))
             throw new InvalidOperationException(
-                "Ya tienes una apuesta con esta selección en este partido.");
+                "Ya hiciste una apuesta en este partido.");
 
         // Rule #2: amount must not exceed the balance
         var user = await _userManager.FindByIdAsync(userId)
@@ -65,8 +65,10 @@ public class BetService : IBetService
         // Rule #2 (second half): deduct the stake...
         user.Balance -= dto.Amount;
 
-        // ...and record the bet. ONE SaveChanges -> ONE transaction:
-        // the tracked user update and the new bet travel together.
+        // ✅ CORRECCIÓN IMPORTANTE: Guardar el saldo del usuario
+        await _userManager.UpdateAsync(user);
+
+        // ...and record the bet.
         var bet = new Bet
         {
             MatchId = dto.MatchId,
@@ -77,7 +79,7 @@ public class BetService : IBetService
             Status = BetStatus.Pending
         };
 
-        await _betRepository.AddAsync(bet);   // SaveChangesAsync happens here
+        await _betRepository.AddAsync(bet);
     }
 
     public async Task<IEnumerable<BetDto>> GetMyBetsAsync(string userId)
