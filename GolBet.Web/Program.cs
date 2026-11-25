@@ -1,3 +1,4 @@
+using Serilog;
 using GolBet.Entities;
 using GolBet.Repositories.Data;
 using GolBet.Repositories.Implementations;
@@ -10,24 +11,23 @@ using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 
 var culture = new CultureInfo("es-CO");
-// Dates in Spanish; numbers neutral so model binding reads "2.5" correctly
 culture.NumberFormat = (NumberFormatInfo)CultureInfo.InvariantCulture.NumberFormat.Clone();
-culture.NumberFormat.NumberGroupSeparator = ""; // "2,5" fails loudly, never binds as 25
+culture.NumberFormat.NumberGroupSeparator = "";
 
 CultureInfo.DefaultThreadCurrentCulture = culture;
 CultureInfo.DefaultThreadCurrentUICulture = culture;
-var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseSerilog((context, config) =>
+    config.ReadFrom.Configuration(context.Configuration));
+
 builder.Services.AddControllersWithViews();
 
-//Este es el nuevo código 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
 {
-    // Academic-friendly password policy (production would be stricter)
     options.Password.RequiredLength = 6;
     options.Password.RequireNonAlphanumeric = false;
     options.Password.RequireUppercase = false;
@@ -38,30 +38,30 @@ builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
-    options.LoginPath = "/Account/Login";           // anonymous hitting [Authorize]
-    options.AccessDeniedPath = "/Account/AccessDenied";  // wrong role
+    options.LoginPath = "/Account/Login";
+    options.AccessDeniedPath = "/Account/AccessDenied";
 });
 
-
-// Open generic registration: one line, a repository for every entity
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 
-// Specific repositories
 builder.Services.AddScoped<IMatchRepository, MatchRepository>();
 builder.Services.AddScoped<IBetRepository, BetRepository>();
 
-
-// AutoMapper: scans the assembly containing MappingProfile for all profiles
 builder.Services.AddAutoMapper(typeof(MappingProfile));
 
-// Business services
 builder.Services.AddScoped<IMatchService, MatchService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IBetService, BetService>();
 
 var app = builder.Build();
 
-// Seed the database on startup
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Error/General");
+}
+
+app.UseStatusCodePagesWithReExecute("/Error/{0}");
+
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -71,21 +71,19 @@ using (var scope = app.Services.CreateScope())
     await DbSeeder.SeedAsync(context, roleManager, userManager);
 }
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+app.UseSerilogRequestLogging();
 
 app.UseRouting();
 
-app.UseAuthentication();   // who are you?  (reads the cookie, builds User)
-app.UseAuthorization();    // may you do this?  (evaluates [Authorize])
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllerRoute(
     name: "default",
